@@ -312,6 +312,24 @@ def navigation_on_expired_domains_page(page, count: int, data: List = []):
         return data
 
 
+def get_total_pages(page):
+    try:
+        # Trouver la div contenant l'information sur le nombre total de pages
+        page_info = page.locator("div.pageinfo.right").first.text_content().strip()
+        # Extraire le nombre total de pages avec une expression régulière
+        match = re.search(r"Page \d+ of ([\d,]+)", page_info)
+        if match:
+            total_pages = int(match.group(1).replace(",", ""))  # Supprime les virgules et convertit en entier
+            print('nombre total de page:', total_pages)
+            return total_pages
+        else:
+            logger.warning("Impossible de trouver le nombre total de pages.")
+            return 0
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération du nombre de pages : {e}")
+        return 0  # Valeur par défaut en cas d'erreur
+
+
 def get_domains_from_expired_domains(pw, url: str, username: str, password: str, bright_data: False, headless=False):
     if bright_data:
         browser = pw.firefox.connect_over_cdp(SBR_WS_CDP)
@@ -390,35 +408,40 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
             #page.pause()
             filterThePage(page)
             logger.info("page pending deleted domains filtrée")
-            count = 0
-            while count <= 1:
-                logger.info('On entre bien dans la boucle')
-                data = []
-                navigation_on_expired_domains_page(page=page, count=count, data=data)
-                header = [
-                    "Domain", "Length", "Backlinks", "Domain Pop", "Creation Date",
-                    "First Seen", "Crawl Results", "Global Rank", "TLD Registered",
-                    ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "End Date"
-                ]
-                with open("pending_domains_from_expired_domains.csv", "a", newline="", encoding="utf-8") as csvfile:
-                    csvwriter = csv.writer(csvfile)
-                    if csvfile.tell() == 0:
-                        csvwriter.writerow(header)
-                    csvwriter.writerows(data)
-                logger.info(f'les données de la page {count} sont extraites')
+            count = 1
+            #page.pause()
+            max_pages = get_total_pages(page)
+            if max_pages == 0:
+                logger.warning("Aucune page disponible ou erreur dans l'extraction du nombre de pages.")
+            else:
+                while count < min(max_pages, 50):
+                    logger.info('On entre bien dans la boucle')
+                    data = []
+                    navigation_on_expired_domains_page(page=page, count=count, data=data)
+                    header = [
+                        "Domain", "Length", "Backlinks", "Domain Pop", "Creation Date",
+                        "First Seen", "Crawl Results", "Global Rank", "TLD Registered",
+                        ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "End Date"
+                    ]
+                    with open("pending_domains_from_expired_domains.csv", "a", newline="", encoding="utf-8") as csvfile:
+                        csvwriter = csv.writer(csvfile)
+                        if csvfile.tell() == 0:
+                            csvwriter.writerow(header)
+                        csvwriter.writerows(data)
+                    logger.info(f'les données de la page {count} sont extraites')
 
-                page.wait_for_timeout(2000)
-                # logger.info(f'screenshot_{count} est supprimé avec succés')
-                try:
-                    if page.get_by_role("link", name="Next Page »").first:
-                        page.get_by_role("link", name="Next Page »").first.click()
-                except Exception as e:
-                    logger.info(f'Impossible de trouver le lien "Next Page": {e}')
-                    raise Exception from e
-                page.wait_for_timeout(30000)
-                # print(count)
-                count += 1
-                logger.info('On sort bien de la boucle')
+                    page.wait_for_timeout(2000)
+                    # logger.info(f'screenshot_{count} est supprimé avec succés')
+                    try:
+                        if page.get_by_role("link", name="Next Page »").first:
+                            page.get_by_role("link", name="Next Page »").first.click()
+                    except Exception as e:
+                        logger.info(f'Impossible de trouver le lien "Next Page": {e}')
+                        raise Exception from e
+                    page.wait_for_timeout(30000)
+                    # print(count)
+                    count += 1
+                    logger.info('On sort bien de la boucle')
     except Exception as e:
         logger.info(f'Impossible de trouver le lien Pending Delete {e}')
         raise Exception from e
@@ -428,36 +451,39 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
             page.wait_for_timeout(2000)
             filterThePage(page)
             logger.info("page deleted domains filtrée")
-            counter = 0
-            while counter <= 1:
-                logger.info('On est bien entré dans la boucle pour deleted domains')
-                datas = []
-                navigation_on_expired_domains_page(page=page, count=counter, data=datas)
-                columns = [
-                    "Domain", "Length", "Backlinks", "Domain Pop", "Creation Date",
-                    "First Seen", "Crawl Results", "Global Rank", "TLD Registered",
-                    ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "Dropped"
-                ]
+            counter = 1
+            if max_pages == 0:
+                logger.warning("Aucune page disponible ou erreur dans l'extraction du nombre de pages.")
+            else:
+                while counter < min(max_pages, 50):
+                    logger.info('On est bien entré dans la boucle pour deleted domains')
+                    datas = []
+                    navigation_on_expired_domains_page(page=page, count=counter, data=datas)
+                    columns = [
+                        "Domain", "Length", "Backlinks", "Domain Pop", "Creation Date",
+                        "First Seen", "Crawl Results", "Global Rank", "TLD Registered",
+                        ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "Dropped"
+                    ]
 
-                with open("deleted_domains_from_expired_domains.csv", mode="a", newline='', encoding="utf-8") as file:
-                    writer = csv.writer(file)
+                    with open("deleted_domains_from_expired_domains.csv", mode="a", newline='', encoding="utf-8") as file:
+                        writer = csv.writer(file)
 
-                    if file.tell() == 0:
-                        writer.writerow(columns)
+                        if file.tell() == 0:
+                            writer.writerow(columns)
 
-                    writer.writerows(datas)
-                logger.info(f'Données extraite à le page {counter}')
-                page.wait_for_timeout(2000)
-                try:
-                    if page.get_by_role("link", name="Next Page »").first:
-                        page.get_by_role("link", name="Next Page »").first.click()
-                        page.wait_for_timeout(30000)
-                except Exception as e:
-                    logger.info(f'Impossible de trouver le bouton suivant: {e}')
-                    raise Exception from e
-                # print(count)
-                counter += 1
-                logger.info('On est bien sortie de la boucle')
+                        writer.writerows(datas)
+                    logger.info(f'Données extraite à le page {counter}')
+                    page.wait_for_timeout(2000)
+                    try:
+                        if page.get_by_role("link", name="Next Page »").first:
+                            page.get_by_role("link", name="Next Page »").first.click()
+                            page.wait_for_timeout(30000)
+                    except Exception as e:
+                        logger.info(f'Impossible de trouver le bouton suivant: {e}')
+                        raise Exception from e
+                    # print(count)
+                    counter += 1
+                    logger.info('On est bien sortie de la boucle')
     except Exception as e:
         logger.info(f'Impossible de trouver le lien Pending Delete: {e}')
         raise Exception from e
@@ -707,10 +733,20 @@ def main():
         logger.info('Connexion sur web scraping en cours')
         # username: sagarroy kateperry aevansnappiah melyssachristian476
         # password: Sagarroy@12 November172024 Omoghana01@
-        get_domains_from_expired_domains(pw=playwright, url=expired_domain_url, username="melyssachristian476",
-                                         password="melyssachristian476", bright_data=False, headless=True)
-
-        # get_domains_from_domains_robot(pw=playwright, url=domain_robot_url, bright_data=False, headless=False)
+        get_domains_from_expired_domains(
+            pw=playwright,
+            url=expired_domain_url,
+            username="melyssachristian476",
+            password="melyssachristian476",
+            bright_data=False,
+            headless=False
+        )
+        get_domains_from_domains_robot(
+            pw=playwright,
+            url=domain_robot_url,
+            bright_data=False,
+            headless=False
+        )
 
     end_time = time.time()
     execution_time = end_time - start_time

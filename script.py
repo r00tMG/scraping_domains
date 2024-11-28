@@ -113,56 +113,6 @@ def extract_data_from_robot(noeuds: str, tab: List[List]):
     return tab
 
 
-def get_domain_godaddy(url: str):
-    existing_domains = set()
-    try:
-        with open("domain_godaddy.csv", mode="r", encoding="utf-8") as file:
-            reader = csv.reader(file)
-            next(reader)
-            for row in reader:
-                if row and len(row) > 2:
-                    existing_domains.add(row[2])
-    except FileNotFoundError:
-        pass
-
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(url)
-        page.wait_for_timeout(20000)
-        html = page.content()
-        soup = BeautifulSoup(html, 'html.parser')
-        godaddy_rows = soup.select("table.table-striped tbody tr")
-        rows_godaddy = []
-        for row in godaddy_rows:
-            row_data = []
-            cells = row.find_all('td')
-
-            for cell in cells:
-                text = cell.get_text(strip=True)
-                row_data.append(text)
-
-            if len(row_data) > 2 and row_data[2] not in existing_domains:
-                rows_godaddy.append(row_data)
-                existing_domains.add(row_data[2])
-        print(rows_godaddy)
-        with open("domain_godaddy.csv", mode="a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
-
-            if file.tell() == 0:
-                header = ["", "Select All", "Nom", "Offres", "Prix*", "Trafic", "Ancienneté",
-                          "Entrez une enchère/offre (USD)", "Valeur estimée", "Temps restant", "TF Majestic",
-                          "CF Majestic",
-                          "Backlinks", "Domaines de référence"]
-                writer.writerow(header)
-
-            writer.writerows(rows_godaddy)
-
-        print("Les données ont été enregistrées dans 'domain_godaddy.csv'.")
-        browser.close()
-    pass
-
-
 def fetch_confirmation_code(email, password, subject_filter="Your code for ExpiredDomains.net"):
     try:
         print("debut")
@@ -308,7 +258,61 @@ def filterThePage(page):
     page.get_by_role("link", name="Show Filter").click()
 
 
-def get_domains_from_expired_domains(pw, url: str, username: str, password: str, bright_data: True, headless=False):
+def navigation_on_expired_domains_page(page, count: int, data: List = []):
+
+    page.set_default_timeout(30000)
+    html = page.content()
+    logger.info('Récupération de la page html')
+    page.wait_for_timeout(3000)
+    soup = BeautifulSoup(html, 'html.parser')
+    page.wait_for_timeout(3000)
+
+    trs = soup.find('table', class_="base1").find('tbody').find_all('tr')
+    logger.info('Analyse du contenue de la page html')
+    page.wait_for_timeout(2000)
+    # page.pause()
+    # print(f'noeud \'trs\' extraite: {trs}')
+    unique_domains = set()
+    for row in trs:
+        cells = row.find_all("td")
+        # logger.info(f'Récupérer toutes les cellules{cells}')
+        if not cells:
+            continue
+        domain = cells[0].a.text.strip() if cells[0].a else "-"
+        if domain in unique_domains:
+            continue
+
+        unique_domains.add(domain)
+        length = cells[3].text.strip()
+        backlinks = cells[4].a.text.strip() if cells[4].a else "-"
+        domain_popularity = cells[5].a.text.strip() if cells[5].a else "-"
+        creation_date = cells[6].text.strip()
+        first_seen = cells[7].a.text.strip() if cells[7].a else "-"
+        saved_results = cells[8].a.text.strip() if cells[8].a else "-"
+        global_rank = cells[9].a.text.strip() if cells[9].a else "-"
+        tld_registered = cells[10].a.text.strip() if cells[10].a else "-"
+        status_com = cells[11].span.text.strip() if cells[11].span else "-"
+        status_net = cells[12].span.text.strip() if cells[12].span else "-"
+        status_org = cells[13].span.text.strip() if cells[13].span else "-"
+        status_biz = cells[14].span.text.strip() if cells[14].span else "-"
+        status_info = cells[15].span.text.strip() if cells[15].span else "-"
+        status_de = cells[16].span.text.strip() if cells[16].span else "-"
+        date_scraping = datetime.now().strftime("%Y-%m-%d")
+        add_date = cells[18].text.strip() if cells[18] else "-"
+        end_date = cells[21].a.text.strip() if cells[21].a else (
+            cells[21].text.strip() if cells[21].text.strip() else "-")
+
+        data.append([
+            domain, length, backlinks, domain_popularity, creation_date,
+            first_seen, saved_results, global_rank, tld_registered,
+            status_com, status_net, status_org, status_biz,
+            status_info, status_de, date_scraping, add_date, end_date
+        ])
+        logger.info(f"Données extraites de la table à la page {count}")
+        return data
+
+
+def get_domains_from_expired_domains(pw, url: str, username: str, password: str, bright_data: False, headless=False):
     if bright_data:
         browser = pw.firefox.connect_over_cdp(SBR_WS_CDP)
     else:
@@ -367,11 +371,10 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
     password = "ekkr vihz safe kadp"
     # code = fetch_confirmation_code(email, password)
     code = fetch_gmail_code(email, password)
-    print(f"Code de verification récupéré {code}")
     page.wait_for_timeout(10000)
     try:
         if code:
-            #print(code)
+            logger.info(f"Code de verification récupéré {code}")
             page.get_by_placeholder("Your Code").click()
             page.get_by_placeholder("Your Code").fill(code)
             page.wait_for_timeout(2000)
@@ -388,67 +391,20 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
             filterThePage(page)
             logger.info("page pending deleted domains filtrée")
             count = 0
-            while count <= 2:
+            while count <= 1:
                 logger.info('On entre bien dans la boucle')
-                page.set_default_timeout(30000)
-                html = page.content()
-                page.wait_for_timeout(3000)
-                soup = BeautifulSoup(html, 'html.parser')
-                page.wait_for_timeout(3000)
-
-                trs = soup.find('table', class_="base1").find('tbody').find_all('tr')
-
-                page.wait_for_timeout(2000)
-                # page.pause()
-                # print(f'noeud \'trs\' extraite: {trs}')
                 data = []
-                unique_domains = set()
-                for row in trs:
-                    cells = row.find_all("td")
-                    logger.info(f'Récupérer toutes les cellules{cells}')
-                    if not cells:
-                        continue
-                    domain = cells[0].a.text.strip() if cells[0].a else "-"
-                    if domain in unique_domains:
-                        continue
-
-                    unique_domains.add(domain)
-                    length = cells[3].text.strip()
-                    backlinks = cells[4].a.text.strip() if cells[4].a else "-"
-                    domain_popularity = cells[5].a.text.strip() if cells[5].a else "-"
-                    creation_date = cells[6].text.strip()
-                    first_seen = cells[7].a.text.strip() if cells[7].a else "-"
-                    saved_results = cells[8].a.text.strip() if cells[8].a else "-"
-                    global_rank = cells[9].a.text.strip() if cells[9].a else "-"
-                    tld_registered = cells[10].a.text.strip() if cells[10].a else "-"
-                    status_com = cells[11].span.text.strip() if cells[11].span else "-"
-                    status_net = cells[12].span.text.strip() if cells[12].span else "-"
-                    status_org = cells[13].span.text.strip() if cells[13].span else "-"
-                    status_biz = cells[14].span.text.strip() if cells[14].span else "-"
-                    status_info = cells[15].span.text.strip() if cells[15].span else "-"
-                    status_de = cells[16].span.text.strip() if cells[16].span else "-"
-                    date_scraping = datetime.now().strftime("%Y-%m-%d")
-                    add_date = cells[18].text.strip() if cells[18] else "-"
-                    end_date = cells[21].a.text.strip() if cells[21].a else "-"
-
-                    # Ajouter les données à la liste
-                    data.append([
-                        domain, length, backlinks, domain_popularity, creation_date,
-                        first_seen, saved_results, global_rank, tld_registered,
-                        status_com, status_net, status_org, status_biz,
-                        status_info, status_de, date_scraping, add_date, end_date
-                    ])
-                    logger.info(f"Données extraites de la table à la page {count}")
+                navigation_on_expired_domains_page(page=page, count=count, data=data)
                 header = [
                     "Domain", "Length", "Backlinks", "Domain Pop", "Creation Date",
                     "First Seen", "Crawl Results", "Global Rank", "TLD Registered",
                     ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "End Date"
                 ]
-                with open("pending_delete1.csv", "a", newline="", encoding="utf-8") as csvfile:
+                with open("pending_domains_from_expired_domains.csv", "a", newline="", encoding="utf-8") as csvfile:
                     csvwriter = csv.writer(csvfile)
                     if csvfile.tell() == 0:
                         csvwriter.writerow(header)
-                    csvwriter.writerows(data)  # Écrire les données
+                    csvwriter.writerows(data)
                 logger.info(f'les données de la page {count} sont extraites')
 
                 page.wait_for_timeout(2000)
@@ -473,52 +429,17 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
             filterThePage(page)
             logger.info("page deleted domains filtrée")
             counter = 0
-            while counter <= 2:
+            while counter <= 1:
                 logger.info('On est bien entré dans la boucle pour deleted domains')
-                page.set_default_timeout(30000)
-                html = page.content()
-                page.wait_for_timeout(3000)
-                soup = BeautifulSoup(html, 'html.parser')
-                page.wait_for_timeout(3000)
-
-                trs = soup.find('table', class_="base1").find('tbody').find_all('tr')
-
-                page.wait_for_timeout(2000)
-                # print(f'noeud \'trs\' extraite: {trs}')
-                # page.pause()
                 datas = []
-                seen_domains = set()
+                navigation_on_expired_domains_page(page=page, count=counter, data=datas)
+                columns = [
+                    "Domain", "Length", "Backlinks", "Domain Pop", "Creation Date",
+                    "First Seen", "Crawl Results", "Global Rank", "TLD Registered",
+                    ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "Dropped"
+                ]
 
-                for row in trs:
-                    cells = row.find_all("td")
-                    #logger.info(f'Récupérer toutes les cellules{cells}')
-                    if len(cells) < 6:
-                        continue
-
-                    domain_name = cells[0].a.text.strip() if cells[0] else '-'
-                    if domain_name in seen_domains:
-                        continue
-
-                    seen_domains.add(domain_name)
-                    creation_date = cells[1].text.strip()
-                    backlinks = cells[2].a.text.strip() if cells[2].a else "-"
-                    length = cells[3].text.strip()
-                    domain_popularity = cells[4].a.text.strip() if cells[4].a else "-"
-                    tld_registered = cells[5].a.text.strip() if cells[5].a else "-"
-                    date_scraping = datetime.now().strftime("%Y-%m-%d")
-                    add_date = cells[18].text.strip() if cells[18] else '-'
-                    field_change = cells[21].text.strip() if cells[18] else '-'
-
-                    datas.append([
-                        domain_name, creation_date, backlinks, length, domain_popularity, tld_registered, date_scraping,
-                        add_date, field_change
-                    ])
-
-                columns = ['Domain', 'Creation Date', 'Backlinks', 'Length', 'Domain Popularity', 'TLD Registered',
-                           'Date Scraping', 'add_date', 'field_change']
-                csv_file = "deleted_domains_expired_net1.csv"
-
-                with open(csv_file, mode="a", newline='', encoding="utf-8") as file:
+                with open("deleted_domains_from_expired_domains.csv", mode="a", newline='', encoding="utf-8") as file:
                     writer = csv.writer(file)
 
                     if file.tell() == 0:
@@ -544,126 +465,12 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
     browser.close()
 
 
-def get_domains_from_expired_domains_com(pw, url: str, bright_data: True, headless=False):
-    AUTH1 = 'brd-customer-hl_5b25fc9f-zone-scraping_browser1:qy1ng0c78qjo'
-    SBR_WS_CDP1 = f'https://{AUTH1}@brd.superproxy.io:9222'
-    if bright_data:
-        browser = pw.chromium.connect_over_cdp(SBR_WS_CDP1, timeout=30000)
-    else:
-        browser = pw.chromium.launch(headless=headless)
-    page = browser.new_page()
-    # context.set_default_timeout(60000)
-    # page = context.new_page()
-    # page.set_extra_http_headers(headers)
-
-    if bright_data and not headless:
-        open_debug_view(page)
-    page.goto(url)
-    page.wait_for_timeout(10000)
-    if page.get_by_role("link", name="Login"):
-        page.get_by_role("link", name="Login").click()
-    else:
-        logger.info('Impossible de trouver le button login')
-
-    page.wait_for_timeout(2000)
-    if page.get_by_placeholder("User Name"):
-        page.get_by_placeholder("User Name").click()
-        page.get_by_placeholder("User Name").fill("dedaxunoc")
-    else:
-        logger.info('Impossible de trouver le champ username')
-    page.wait_for_timeout(2000)
-
-    if page.get_by_placeholder("Password"):
-        page.get_by_placeholder("Password").click()
-        page.get_by_placeholder("Password").fill("Pa$$w0rd!")
-    else:
-        logger.info('Impossible de trouver le champ password')
-    page.wait_for_timeout(2000)
-
-    if page.get_by_role("button", name="Login"):
-        page.get_by_role("button", name="Login").click()
-    else:
-        logger.info('Impossible de trouver le bouton login')
-    page.wait_for_timeout(10000)
-    # page.pause()
-
-    count = 0
-    while True:
-        logger.info('On entre bien dans la boucle')
-        if count == 300:
-            break
-        page.set_default_timeout(2000)
-        print(f'screenshot {count}')
-        if page.get_by_role("table"):
-            page.get_by_role("table").screenshot(path=f"pages/screenshot_{count}.png")
-            logger.info(f'table {count} capturé')
-        else:
-            logger.info('Impossible de trouver la l\'element "table"')
-        # page.pause()
-        delay = random.randint(5, 10)
-        logger.info(f"Pause de {delay} secondes avant la récupération des données sur screenshot_{count}.png")
-        time.sleep(delay)
-
-        img_path = f"pages/screenshot_{count}.png"
-        img = Image.open(img_path)
-        raw_data = pytesseract.image_to_string(img)
-        # print('raw_data:',raw_data)
-        lines = raw_data.strip().split('\n')
-        # print('lines', lines)
-        unique_domains = set()
-        domains = []
-        backlinks = []
-        end_dates = []
-        date_plus_10_jours = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d")
-
-        domain_regex = r'\b[a-zA-Z0-9-]+\.[a-zA-Z]{2,}\b'
-        date_regex = r'\b\d{4}-\d{2}-\d{2}\b'
-
-        for line in lines:
-            domain_match = re.search(domain_regex, line)
-            if domain_match:
-                domains.append(domain_match.group())
-                for domain in domains:
-                    unique_domains.add(domain)
-            date_match = re.search(date_regex, line)
-            if date_match:
-                end_dates.append(date_match.group())
-                print(end_dates)
-
-        domains = list(unique_domains)
-        print("Domains:", domains)
-        print("Backlinks:", backlinks)
-        print("End Dates:", end_dates)
-        # page.pause()
-        num_records = min(len(domains), len(end_dates))
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        data = [
-            [domains[i], current_date, end_dates[i]]
-            for i in range(num_records)
-        ]
-        print('date du jour:', datetime.now())
-        columns = ["Domain", "Add Date", "End Date"]
-
-        with open("domains_from_expired_domain_com.csv", mode="a", newline='', encoding="utf-8") as file:
-            writer = csv.writer(file)
-            if count == 0 and file.tell() == 0:
-                writer.writerow(columns)
-
-            writer.writerows(data)
-        os.remove(img_path)
-        logger.info(f'screenshot_{count} est supprimé avec succés')
-        page.wait_for_timeout(30000)
-        if page.get_by_role("link", name="next"):
-            page.get_by_role("link", name="next").click()
-        else:
-            logger.info('Impossible de trouver le button "next"')
-        # print(count)
-        page.wait_for_timeout(5000)
-        count += 1
-        logger.info('On sort bien de la boucle')
-
-    logger.info('--------Fin d\'execution--------')
-    browser.close()
+def sent_message(message):
+    requests.post("https://api.pushover.net/1/messages.json", {
+        "token": os.environ['PUSHOVER_TOKEN'],
+        "user":  os.environ['PUSHOVER_USER'],
+        "message": message
+    })
 
 
 def save_domains(page: str, count: int):
@@ -896,37 +703,26 @@ def main():
     start_time = time.time()
     expired_domain_url: str = 'https://www.expireddomains.net'
     domain_robot_url = "https://thedomainrobot.com/"
-    godaddy_url = "https://auctions.godaddy.com/beta"
-    expired_domain_url_com: str = 'https://www.expireddomains.com'
     with sync_playwright() as playwright:
         logger.info('Connexion sur web scraping en cours')
-        # get_domains_from_expired_domains_com(pw=playwright, url=expired_domain_url_com, bright_data=False, headless=False)
-
         # username: sagarroy kateperry aevansnappiah melyssachristian476
         # password: Sagarroy@12 November172024 Omoghana01@
         get_domains_from_expired_domains(pw=playwright, url=expired_domain_url, username="melyssachristian476",
-                                         password="melyssachristian476", bright_data=False, headless=False)
+                                         password="melyssachristian476", bright_data=False, headless=True)
 
         # get_domains_from_domains_robot(pw=playwright, url=domain_robot_url, bright_data=False, headless=False)
 
-    # get_domain_robot(url=domain_robot_url)
-    # get_domain_godaddy(url=godaddy_url)
-
-    # Utilisation
-    #email = "kateperry017@yahoo.com"
-    #email = "melyssachristian476@gmail.com"
-    # password = "November172024"
-    #password = "ekkr vihz safe kadp"
-    # code = fetch_confirmation_code(email, password)
-    #code = fetch_gmail_code(email, password)
-    #if code:
-    #    print(code)
-    #else:
-    #    print("Aucun code trouvé.")
-
     end_time = time.time()
     execution_time = end_time - start_time
-    print(f"Le script a mis {execution_time:.2f} secondes à s'exécuter.")
+    current_date = datetime.now()
+    message = f"Le scraper de {expired_domain_url} a mis {execution_time:.2f} secondes à s'exécuter, ce {current_date}"
+    logger.info(message)
+    try:
+        sent_message(message)
+    except Exception as e:
+        error = f"Le script retourne une erreur: {e}"
+        sent_message(error)
+        raise Exception from e
 
 
 if __name__ == '__main__':

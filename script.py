@@ -3,6 +3,8 @@ import os
 import random
 import re
 import sys
+import warnings
+import urllib3
 import webbrowser
 import time
 
@@ -26,23 +28,8 @@ logger.add('python.log', rotation="500kb", level="WARNING")
 logger.add(sys.stderr, level="INFO")
 load_dotenv()
 
-user_agents = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:102.0) Gecko/20100101 Firefox/102.0",
-    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0",
-]
-headers = {
-    "User-Agent": random.choice(user_agents),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Connection": "keep-alive",
-    "DNT": "1",
-}
-# base_url = "https://www.webexpire.fr/encheres"
-
-proxyUrl = 'https://cors-anywhere.herokuapp.com/'
-
+warnings.filterwarnings('ignore', category=urllib3.exceptions.NotOpenSSLWarning)
+#warnings.filterwarnings('ignore', category=urllib3.exceptions.InsecureRequestWarning)
 SBR_WS_CDP = os.environ['SBR_WS_CDP']
 
 
@@ -113,33 +100,45 @@ def extract_data_from_robot(noeuds: str, tab: List[List]):
     return tab
 
 
-def fetch_confirmation_code(email, password, subject_filter="Your code for ExpiredDomains.net"):
+def fetch_yahoo_code(email, password, subject_filter="Your code for ExpiredDomains.net"):
     try:
-        print("debut")
+        #print("debut")
         server = imapclient.IMAPClient("imap.mail.yahoo.com", ssl=True)
-        print(server)
+        #print(server)
         server.login(email, password)
-        print('login')
-
-        folders_to_check = ["INBOX", "Bulk"]
+        #print('login')
+        folders = server.list_folders()
+        #print("Liste des dossiers disponibles :", folders)
+        folders_to_check = ["Inbox", "Bulk"]
+        available_folders = [folder[2] for folder in server.list_folders()]
         for folder in folders_to_check:
+            if folder not in available_folders:
+                print(f"Dossier non trouvé : {folder}")
+                continue
+
             server.select_folder(folder)
-            print(f"Recherche dans le dossier : {folder}")
+            #print(f"Recherche dans le dossier : {folder}")
 
             messages = server.search(['UNSEEN', 'SUBJECT', subject_filter])
-            print(f"messages: {messages}")
+            #print(f"messages: {messages}")
             if messages:
                 for msg_id in messages:
-                    raw_message = server.fetch(msg_id, ['BODY[]', 'FLAGS'])
+                    raw_message = server.fetch(msg_id, ['BODY[]', 'FLAGS', 'RFC822.HEADER'])
+                    headers_spam = raw_message[msg_id][b'RFC822.HEADER'].decode('utf-8')
+                    # Vérifier si l'email a été marqué comme spam
+                    if 'X-Spam-Flag: YES' in headers_spam:
+                        print("Cet email est marqué comme spam.")
+
                     message = pyzmail.PyzMessage.factory(raw_message[msg_id][b'BODY[]'])
-                    print()
+
                     if message.text_part:
                         content = message.text_part.get_payload().decode(message.text_part.charset)
-                        print("Contenu de l'email :", content)
+                        #print("Contenu de l'email :", content)
 
-                        match = re.search(r'Your Code: (\d+)', content)
+                        #match = re.search(r'Your Code: (\d+)', content)
+                        match = re.search(r'\b\d{6}\b', content)
                         if match:
-                            return match.group(1)
+                            return match.group(0)
 
         print("Aucun email correspondant trouvé dans les dossiers vérifiés.")
         return None
@@ -167,18 +166,16 @@ def fetch_gmail_code(email, password, subject_filter="Your code for ExpiredDomai
 
                     if message.text_part:
                         content = message.text_part.get_payload().decode(message.text_part.charset)
-                        # print("Contenu de l'email :", content)
+                        #print("Contenu de l'email :", content)
 
-                        # match = re.search(r'Your Code: (\d+)', content)
                         match = re.search(r'\b\d{6}\b', content)
-                        # match = re.search(r'Your Code: \*?(\d+)\*?', content)
 
                         # print('extraction du code', match)
                         if match:
                             return match.group(0)
 
-        print("Aucun email correspondant trouvé dans les dossiers vérifiés.")
-        return None
+        #print("Aucun email correspondant trouvé dans les dossiers vérifiés.")
+        #return None
     except Exception as e:
         print(f"Erreur lors de la récupération de l'email : {e}")
         return None
@@ -205,49 +202,49 @@ def filterThePage(page):
         raise Exception from e
 
     page.wait_for_timeout(2000)
-    try:
-        if page.get_by_label("only new last 12 hours"):
-            page.get_by_label("only new last 12 hours").check()
-    except Exception as e:
-        logger.info(f"Impossible de voir le checkbox 'only new last 24 hours': {e}")
-        raise Exception from e
-    page.wait_for_timeout(2000)
+    # try:
+    #     if page.get_by_label("only new last 12 hours"):
+    #         page.get_by_label("only new last 12 hours").check()
+    # except Exception as e:
+    #     logger.info(f"Impossible de voir le checkbox 'only new last 24 hours': {e}")
+    #     raise Exception from e
+    # page.wait_for_timeout(2000)
     try:
         page.get_by_label("Domains per Page").select_option("200")
     except Exception as e:
         logger.info(f"Impossible de voir la selection 'Domains par Page': {e}")
         raise Exception from e
-    try:
-        page.get_by_label("no consecutive Hyphens").check()
-    except Exception as e:
-        logger.info(f"Impossible de trouver le checkbox 'no consecutive Hyphens': {e}")
-        raise Exception from e
-    page.wait_for_timeout(2000)
-    try:
-        page.get_by_label("no Adult Names").check()
-    except Exception as e:
-        logger.info(f"Impossible de trouver le checkbox 'no Adult Names': {e}")
-        raise Exception from e
-    page.wait_for_timeout(2000)
-    try:
-        page.get_by_label("Backlinks").click()
-        page.get_by_label("Backlinks").fill("1")
-    except Exception as e:
-        logger.info(f"Impossible de trouver le champs 'Backlinks > min ': {e}")
-        raise Exception from e
-    page.wait_for_timeout(2000)
-    try:
-        page.get_by_text("Additional").click()
-    except Exception as e:
-        logger.info(f"Impossible de trouver le bouton 'Additional': {e}")
-        raise Exception from e
-    page.wait_for_timeout(3000)
-    try:
-        page.locator("input[name=\"ftldsblock\"]").click()
-        page.locator("input[name=\"ftldsblock\"]").fill(".cn .hk .ru .com.cn")
-    except Exception as e:
-        logger.info(f'Impossible de trouver le champ \'TLD Blocklist\': {e}')
-        raise Exception from e
+    # try:
+    #     page.get_by_label("no consecutive Hyphens").check()
+    # except Exception as e:
+    #     logger.info(f"Impossible de trouver le checkbox 'no consecutive Hyphens': {e}")
+    #     raise Exception from e
+    # page.wait_for_timeout(2000)
+    # try:
+    #     page.get_by_label("no Adult Names").check()
+    # except Exception as e:
+    #     logger.info(f"Impossible de trouver le checkbox 'no Adult Names': {e}")
+    #     raise Exception from e
+    # page.wait_for_timeout(2000)
+    # try:
+    #     page.get_by_label("Backlinks").click()
+    #     page.get_by_label("Backlinks").fill("1")
+    # except Exception as e:
+    #     logger.info(f"Impossible de trouver le champs 'Backlinks > min ': {e}")
+    #     raise Exception from e
+    # page.wait_for_timeout(2000)
+    # try:
+    #     page.get_by_text("Additional").click()
+    # except Exception as e:
+    #     logger.info(f"Impossible de trouver le bouton 'Additional': {e}")
+    #     raise Exception from e
+    # page.wait_for_timeout(3000)
+    # try:
+    #     page.locator("input[name=\"ftldsblock\"]").click()
+    #     page.locator("input[name=\"ftldsblock\"]").fill(".cn .hk .ru .com.cn")
+    # except Exception as e:
+    #     logger.info(f'Impossible de trouver le champ \'TLD Blocklist\': {e}')
+    #     raise Exception from e
     try:
         if page.get_by_role("button", name="Apply Filter"):
             page.get_by_role("button", name="Apply Filter").click()
@@ -258,57 +255,137 @@ def filterThePage(page):
     page.get_by_role("link", name="Show Filter").click()
 
 
+""" def get_seo_metrics(pw, url: str, domain: str, bright_data: False, headless=False):
+    try:
+        time.sleep(61)  
+        if bright_data:
+            browser = pw.firefox.connect_over_cdp(SBR_WS_CDP)
+        else:
+            browser = pw.chromium.launch(headless=headless)
+        context = browser.new_context()
+        context.set_default_timeout(30000)  # Réduit le timeout à 30 secondes
+
+        page = context.new_page()
+        try:
+            page.goto(url, timeout=30000)  # Timeout spécifique pour le goto
+            page.goto("https://www.checkpagerank.net/check-page-rank.php", timeout=30000)
+            page.wait_for_timeout(2000)  # Réduit le temps d'attente
+            
+            # Vérification que la page est bien chargée
+            if page.get_by_role("textbox", name="Valid link only"):
+                page.get_by_role("textbox", name="Valid link only").click()
+                page.get_by_role("textbox", name="Valid link only").fill(domain)
+                page.wait_for_timeout(2000)
+                page.get_by_role("button", name="Submit").click()
+                page.wait_for_timeout(2000)
+                
+                html = page.content()
+                soup = BeautifulSoup(html, 'html.parser')
+                trs = soup.select('div.container.results div.row')
+                metrics = {}
+                for row in trs:
+                    cols = row.find_all('div', class_='col-md-5')
+                    if len(cols) == 2:
+                        col1_text = cols[0].get_text(strip=True)
+                        col2_text = cols[1].get_text(strip=True)
+
+                        if ":" in col1_text:
+                            label1, value1 = map(str.strip, col1_text.split(":", 1))
+                            if 'Domain Authority' in label1:
+                                metrics["DA"] = value1
+                            elif 'Trust Flow' in label1:
+                                metrics["TF"] = value1
+                            elif 'Citation Flow' in label1:
+                                metrics["CF"] = value1
+
+                        if ":" in col2_text:
+                            label2, value2 = map(str.strip, col2_text.split(":", 1))
+                            if 'Page Authority' in label2:
+                                metrics["PA"] = value2
+                            elif 'Trust Metric' in label2:
+                                metrics["TM"] = value2
+                            elif 'Domain Validity' in label2:
+                                metrics["DV"] = value2
+                logger.info(f"Resultats lors de l'accès aux métriques SEO pour {domain}: {metrics}")
+                return metrics or {"DA": "N/A", "PA": "N/A", "TF": "N/A", "CF": "N/A", "TM": "N/A", "DV": "N/A"}
+            
+        except Exception as e:
+            logger.warning(f"Erreur lors de l'accès aux métriques SEO pour {domain}: {str(e)}")
+            return {"DA": "N/A", "PA": "N/A", "TF": "N/A", "CF": "N/A", "TM": "N/A", "DV": "N/A"}
+        
+        finally:
+            try:
+                browser.close()
+            except:
+                pass
+                
+    except Exception as e:
+        logger.error(f"Erreur critique lors de l'obtention des métriques SEO: {str(e)}")
+        return {"DA": "N/A", "PA": "N/A", "TF": "N/A", "CF": "N/A", "TM": "N/A", "DV": "N/A"}
+ """
+
+
 def navigation_on_expired_domains_page(page, count: int, data: List = []):
 
-    page.set_default_timeout(30000)
-    html = page.content()
-    logger.info('Récupération de la page html')
-    page.wait_for_timeout(3000)
-    soup = BeautifulSoup(html, 'html.parser')
-    page.wait_for_timeout(3000)
+    try:
+        page.mouse.wheel(0, 500)
+        page.set_default_timeout(30000)
+        html = page.content()
+        logger.info('Récupération de la page html')
+        page.wait_for_timeout(2000)
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        trs = soup.find('table', class_="base1").find('tbody').find_all('tr')
+        logger.info('Analyse du contenu de la page html')
+        
+        unique_domains = set()
+        for row in trs:
+            try:
+                cells = row.find_all("td")
+                if not cells or len(cells) < 22:
+                    logger.warning(f"Ligne ignorée, colonnes manquantes : {cells}")
+                    continue
+                    
+                domain = cells[0].a.text.strip() if cells[0].a else "-"
+                if domain in unique_domains:
+                    continue
 
-    trs = soup.find('table', class_="base1").find('tbody').find_all('tr')
-    logger.info('Analyse du contenue de la page html')
-    page.wait_for_timeout(2000)
-    # page.pause()
-    # print(f'noeud \'trs\' extraite: {trs}')
-    unique_domains = set()
-    for row in trs:
-        cells = row.find_all("td")
-        # logger.info(f'Récupérer toutes les cellules{cells}')
-        if not cells:
-            continue
-        domain = cells[0].a.text.strip() if cells[0].a else "-"
-        if domain in unique_domains:
-            continue
+                if domain in unique_domains:
+                    continue
 
-        unique_domains.add(domain)
-        length = cells[3].text.strip()
-        backlinks = cells[4].a.text.strip() if cells[4].a else "-"
-        domain_popularity = cells[5].a.text.strip() if cells[5].a else "-"
-        creation_date = cells[6].text.strip()
-        first_seen = cells[7].a.text.strip() if cells[7].a else "-"
-        saved_results = cells[8].a.text.strip() if cells[8].a else "-"
-        global_rank = cells[9].a.text.strip() if cells[9].a else "-"
-        tld_registered = cells[10].a.text.strip() if cells[10].a else "-"
-        status_com = cells[11].span.text.strip() if cells[11].span else "-"
-        status_net = cells[12].span.text.strip() if cells[12].span else "-"
-        status_org = cells[13].span.text.strip() if cells[13].span else "-"
-        status_biz = cells[14].span.text.strip() if cells[14].span else "-"
-        status_info = cells[15].span.text.strip() if cells[15].span else "-"
-        status_de = cells[16].span.text.strip() if cells[16].span else "-"
-        date_scraping = datetime.now().strftime("%Y-%m-%d")
-        add_date = cells[18].text.strip() if cells[18] else "-"
-        end_date = cells[21].a.text.strip() if cells[21].a else (
-            cells[21].text.strip() if cells[21].text.strip() else "-")
+                unique_domains.add(domain)
+                length = cells[3].text.strip()
+                backlinks = cells[4].a.text.strip() if cells[4].a else "-"
+                domain_popularity = cells[5].a.text.strip() if cells[5].a else "-"
+                creation_date = cells[6].text.strip()
+                first_seen = cells[7].a.text.strip() if cells[7].a else "-"
+                saved_results = cells[8].a.text.strip() if cells[8].a else "-"
+                global_rank = cells[9].a.text.strip() if cells[9].a else "-"
+                tld_registered = cells[10].a.text.strip() if cells[10].a else "-"
+                status_com = cells[11].span.text.strip() if cells[11].span else "-"
+                status_net = cells[12].span.text.strip() if cells[12].span else "-"
+                status_org = cells[13].span.text.strip() if cells[13].span else "-"
+                status_biz = cells[14].span.text.strip() if cells[14].span else "-"
+                status_info = cells[15].span.text.strip() if cells[15].span else "-"
+                status_de = cells[16].span.text.strip() if cells[16].span else "-"
+                date_scraping = datetime.now().strftime("%Y-%m-%d")
+                add_date = cells[18].text.strip() if cells[18] else "-"
+                end_date = cells[21].a.text.strip() if cells[21].a else (
+                    cells[21].text.strip() if cells[21].text.strip() else "-")
 
-        data.append([
-            domain, length, backlinks, domain_popularity, creation_date,
-            first_seen, saved_results, global_rank, tld_registered,
-            status_com, status_net, status_org, status_biz,
-            status_info, status_de, date_scraping, add_date, end_date
-        ])
-        logger.info(f"Données extraites de la table à la page {count}")
+                data.append([
+                    domain, length, backlinks, domain_popularity, creation_date,
+                    first_seen, saved_results, global_rank, tld_registered,
+                    status_com, status_net, status_org, status_biz,
+                    status_info, status_de, date_scraping, add_date, end_date
+                ])
+                logger.info(f"Données extraites de la table à la page {count}")
+            except Exception as e:
+                logger.warning(f"Erreur lors du traitement du domaine: {str(e)}")
+                continue
+        return data
+    except Exception as e:
+        logger.error(f"Erreur lors de la navigation sur la page {count}: {str(e)}")
         return data
 
 
@@ -384,11 +461,15 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
         raise Exception from e
     page.wait_for_timeout(5000)
     #page.pause()
-    email = "melyssachristian476@gmail.com"
-    # password = "November172024"
-    password = "ekkr vihz safe kadp"
-    # code = fetch_confirmation_code(email, password)
-    code = fetch_gmail_code(email, password)
+    #email = "melyssachristian476@gmail.com"
+    #password = "November172024"
+    #password = "ekkr vihz safe kadp"
+    #email = "kateperry017@yahoo.com"
+    #password = "jfsd bzpf mdlk iubk"
+    #code = fetch_yahoo_code(email, password)
+    email = "crawic19@gmail.com"
+    password = "owce htgj qccg todh"
+    code = fetch_gmail_code(email=email, password=password)
     page.wait_for_timeout(10000)
     try:
         if code:
@@ -401,6 +482,7 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
     except Exception as e:
         logger.info(f"Aucun code trouvé: {e}")
         raise Exception from e
+    page.wait_for_timeout(2000)
     try:
         if page.get_by_role("link", name="Pending Delete", exact=True):
             page.get_by_role("link", name="Pending Delete", exact=True).click()
@@ -411,26 +493,31 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
             count = 1
             #page.pause()
             max_pages = get_total_pages(page)
+            data = []
             if max_pages == 0:
                 logger.warning("Aucune page disponible ou erreur dans l'extraction du nombre de pages.")
             else:
-                while count < min(max_pages, 50):
+                while count < min(max_pages, 5):
                     logger.info('On entre bien dans la boucle')
-                    data = []
+
                     navigation_on_expired_domains_page(page=page, count=count, data=data)
                     header = [
                         "Domain", "Length", "Backlinks", "Domain Pop", "Creation Date",
                         "First Seen", "Crawl Results", "Global Rank", "TLD Registered",
                         ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "End Date"
                     ]
-                    with open("pending_domains_from_expired_domains.csv", "a", newline="", encoding="utf-8") as csvfile:
+                    with open("domain_pending.csv", "a", newline="", encoding="utf-8") as csvfile:
                         csvwriter = csv.writer(csvfile)
                         if csvfile.tell() == 0:
                             csvwriter.writerow(header)
-                        csvwriter.writerows(data)
-                    logger.info(f'les données de la page {count} sont extraites')
+                        #csvwriter.writerows(data)
+                        if data:
+                            csvwriter.writerows(data)
+                        else:
+                            logger.warning(f"Aucune donnée à écrire pour la page {count}")
+                    logger.info(f'les {len(data)} données de la page {count} sont extraites')
 
-                    page.wait_for_timeout(2000)
+                    page.wait_for_timeout(3000)
                     # logger.info(f'screenshot_{count} est supprimé avec succés')
                     try:
                         if page.get_by_role("link", name="Next Page »").first:
@@ -445,6 +532,7 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
     except Exception as e:
         logger.info(f'Impossible de trouver le lien Pending Delete {e}')
         raise Exception from e
+    page.wait_for_timeout(2000)
     try:
         if page.get_by_role("link", name="Deleted Domains"):
             page.get_by_role("link", name="Deleted Domains").click()
@@ -452,12 +540,12 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
             filterThePage(page)
             logger.info("page deleted domains filtrée")
             counter = 1
+            datas = []
             if max_pages == 0:
                 logger.warning("Aucune page disponible ou erreur dans l'extraction du nombre de pages.")
             else:
-                while counter < min(max_pages, 50):
+                while counter < min(max_pages, 5):
                     logger.info('On est bien entré dans la boucle pour deleted domains')
-                    datas = []
                     navigation_on_expired_domains_page(page=page, count=counter, data=datas)
                     columns = [
                         "Domain", "Length", "Backlinks", "Domain Pop", "Creation Date",
@@ -465,15 +553,15 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
                         ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "Dropped"
                     ]
 
-                    with open("deleted_domains_from_expired_domains.csv", mode="a", newline='', encoding="utf-8") as file:
+                    with open("domain_expired.csv", mode="a", newline='', encoding="utf-8") as file:
                         writer = csv.writer(file)
 
                         if file.tell() == 0:
                             writer.writerow(columns)
 
                         writer.writerows(datas)
-                    logger.info(f'Données extraite à le page {counter}')
-                    page.wait_for_timeout(2000)
+                    logger.info(f'{len(datas)}Données extraites à le page {counter}')
+                    page.wait_for_timeout(3000)
                     try:
                         if page.get_by_role("link", name="Next Page »").first:
                             page.get_by_role("link", name="Next Page »").first.click()
@@ -731,23 +819,31 @@ def main():
     domain_robot_url = "https://thedomainrobot.com/"
     with sync_playwright() as playwright:
         logger.info('Connexion sur web scraping en cours')
-        # username: sagarroy kateperry aevansnappiah melyssachristian476
-        # password: Sagarroy@12 November172024 Omoghana01@
-        get_domains_from_expired_domains(
-            pw=playwright,
-            url=expired_domain_url,
-            username="melyssachristian476",
-            password="melyssachristian476",
-            bright_data=False,
-            headless=False
-        )
-        get_domains_from_domains_robot(
-            pw=playwright,
-            url=domain_robot_url,
-            bright_data=False,
-            headless=False
-        )
+        # username: sagarroy  aevansnappiah crawic
+        # password: Sagarroy@12 Omoghana01@ crawic19
+        # get_domains_from_expired_domains(
+        #     pw=playwright,
+        #     url=expired_domain_url,
+        #     username="aevansnappiah",
+        #     password="Omoghana01@",
+        #     bright_data=False,
+        #     headless=False
+        # )
 
+                #print(f"DA: {metrics['DA']}")
+        # get_domains_from_domains_robot(
+        #     pw=playwright,
+        #     url=domain_robot_url,
+        #     bright_data=False,
+        #     headless=False
+        # )
+    # email = "kateperry017@yahoo.com"
+    # password = "jfsd bzpf mdlk iubk"
+    #code = fetch_yahoo_code(email, password)
+    # email = "crawic19@gmail.com"
+    # password = "owce htgj qccg todh"
+    # code = fetch_gmail_code(email=email, password=password)
+    # print(code)
     end_time = time.time()
     execution_time = end_time - start_time
     current_date = datetime.now()

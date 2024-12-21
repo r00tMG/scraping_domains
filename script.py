@@ -372,12 +372,13 @@ def navigation_on_expired_domains_page(page, count: int, data: List = []):
                 add_date = cells[18].text.strip() if cells[18] else "-"
                 end_date = cells[21].a.text.strip() if cells[21].a else (
                     cells[21].text.strip() if cells[21].text.strip() else "-")
+                status = cells[22].a.text.strip() if cells[18] else "-"
 
                 data.append([
                     domain, length, backlinks, domain_popularity, creation_date,
                     first_seen, saved_results, global_rank, tld_registered,
                     status_com, status_net, status_org, status_biz,
-                    status_info, status_de, date_scraping, add_date, end_date
+                    status_info, status_de, date_scraping, add_date, end_date, status
                 ])
                 logger.info(f"Données extraites de la table à la page {count}")
             except Exception as e:
@@ -504,9 +505,10 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
                     header = [
                         "Domain", "Length", "Backlinks", "Domain Pop", "Creation Date",
                         "First Seen", "Crawl Results", "Global Rank", "TLD Registered",
-                        ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "End Date"
+                        ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "End Date",
+                        "Status"
                     ]
-                    with open("domain_pending.csv", "a", newline="", encoding="utf-8") as csvfile:
+                    with open("pending_domains_from_expired_domains.csv", "a", newline="", encoding="utf-8") as csvfile:
                         csvwriter = csv.writer(csvfile)
                         if csvfile.tell() == 0:
                             csvwriter.writerow(header)
@@ -550,10 +552,11 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
                     columns = [
                         "Domain", "Length", "Backlinks", "Domain Pop", "Creation Date",
                         "First Seen", "Crawl Results", "Global Rank", "TLD Registered",
-                        ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "Dropped"
+                        ".com", ".net", ".org", ".biz", ".info", ".de", "Date Scraping", "Add Date", "Dropped",
+                        "Status"
                     ]
 
-                    with open("domain_expired.csv", mode="a", newline='', encoding="utf-8") as file:
+                    with open("deleted_domains_from_expired_domains.csv", mode="a", newline='', encoding="utf-8") as file:
                         writer = csv.writer(file)
 
                         if file.tell() == 0:
@@ -821,14 +824,14 @@ def main():
         logger.info('Connexion sur web scraping en cours')
         # username: sagarroy  aevansnappiah crawic
         # password: Sagarroy@12 Omoghana01@ crawic19
-        # get_domains_from_expired_domains(
-        #     pw=playwright,
-        #     url=expired_domain_url,
-        #     username="aevansnappiah",
-        #     password="Omoghana01@",
-        #     bright_data=False,
-        #     headless=False
-        # )
+        get_domains_from_expired_domains(
+            pw=playwright,
+            url=expired_domain_url,
+            username="aevansnappiah",
+            password="Omoghana01@",
+            bright_data=False,
+            headless=False
+        )
 
                 #print(f"DA: {metrics['DA']}")
         # get_domains_from_domains_robot(

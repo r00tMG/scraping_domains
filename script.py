@@ -202,49 +202,49 @@ def filterThePage(page):
         raise Exception from e
 
     page.wait_for_timeout(2000)
-    # try:
-    #     if page.get_by_label("only new last 12 hours"):
-    #         page.get_by_label("only new last 12 hours").check()
-    # except Exception as e:
-    #     logger.info(f"Impossible de voir le checkbox 'only new last 24 hours': {e}")
-    #     raise Exception from e
-    # page.wait_for_timeout(2000)
+    try:
+        if page.get_by_label("only new last 24 hours"):
+            page.get_by_label("only new last 24 hours").check()
+    except Exception as e:
+        logger.info(f"Impossible de voir le checkbox 'only new last 24 hours': {e}")
+        raise Exception from e
+    page.wait_for_timeout(2000)
     try:
         page.get_by_label("Domains per Page").select_option("200")
     except Exception as e:
         logger.info(f"Impossible de voir la selection 'Domains par Page': {e}")
         raise Exception from e
-    # try:
-    #     page.get_by_label("no consecutive Hyphens").check()
-    # except Exception as e:
-    #     logger.info(f"Impossible de trouver le checkbox 'no consecutive Hyphens': {e}")
-    #     raise Exception from e
-    # page.wait_for_timeout(2000)
-    # try:
-    #     page.get_by_label("no Adult Names").check()
-    # except Exception as e:
-    #     logger.info(f"Impossible de trouver le checkbox 'no Adult Names': {e}")
-    #     raise Exception from e
-    # page.wait_for_timeout(2000)
-    # try:
-    #     page.get_by_label("Backlinks").click()
-    #     page.get_by_label("Backlinks").fill("1")
-    # except Exception as e:
-    #     logger.info(f"Impossible de trouver le champs 'Backlinks > min ': {e}")
-    #     raise Exception from e
-    # page.wait_for_timeout(2000)
-    # try:
-    #     page.get_by_text("Additional").click()
-    # except Exception as e:
-    #     logger.info(f"Impossible de trouver le bouton 'Additional': {e}")
-    #     raise Exception from e
-    # page.wait_for_timeout(3000)
-    # try:
-    #     page.locator("input[name=\"ftldsblock\"]").click()
-    #     page.locator("input[name=\"ftldsblock\"]").fill(".cn .hk .ru .com.cn")
-    # except Exception as e:
-    #     logger.info(f'Impossible de trouver le champ \'TLD Blocklist\': {e}')
-    #     raise Exception from e
+    try:
+        page.get_by_label("no consecutive Hyphens").check()
+    except Exception as e:
+        logger.info(f"Impossible de trouver le checkbox 'no consecutive Hyphens': {e}")
+        raise Exception from e
+    page.wait_for_timeout(2000)
+    try:
+        page.get_by_label("no Adult Names").check()
+    except Exception as e:
+        logger.info(f"Impossible de trouver le checkbox 'no Adult Names': {e}")
+        raise Exception from e
+    page.wait_for_timeout(2000)
+    try:
+        page.get_by_label("Backlinks").click()
+        page.get_by_label("Backlinks").fill("1")
+    except Exception as e:
+        logger.info(f"Impossible de trouver le champs 'Backlinks > min ': {e}")
+        raise Exception from e
+    page.wait_for_timeout(2000)
+    try:
+        page.get_by_text("Additional").click()
+    except Exception as e:
+        logger.info(f"Impossible de trouver le bouton 'Additional': {e}")
+        raise Exception from e
+    page.wait_for_timeout(3000)
+    try:
+        page.locator("input[name=\"ftldsblock\"]").click()
+        page.locator("input[name=\"ftldsblock\"]").fill(".cn .hk .ru .com.cn")
+    except Exception as e:
+        logger.info(f'Impossible de trouver le champ \'TLD Blocklist\': {e}')
+        raise Exception from e
     try:
         if page.get_by_role("button", name="Apply Filter"):
             page.get_by_role("button", name="Apply Filter").click()
@@ -253,76 +253,6 @@ def filterThePage(page):
         raise Exception from e
     page.wait_for_timeout(10000)
     page.get_by_role("link", name="Show Filter").click()
-
-
-""" def get_seo_metrics(pw, url: str, domain: str, bright_data: False, headless=False):
-    try:
-        time.sleep(61)  
-        if bright_data:
-            browser = pw.firefox.connect_over_cdp(SBR_WS_CDP)
-        else:
-            browser = pw.chromium.launch(headless=headless)
-        context = browser.new_context()
-        context.set_default_timeout(30000)  # Réduit le timeout à 30 secondes
-
-        page = context.new_page()
-        try:
-            page.goto(url, timeout=30000)  # Timeout spécifique pour le goto
-            page.goto("https://www.checkpagerank.net/check-page-rank.php", timeout=30000)
-            page.wait_for_timeout(2000)  # Réduit le temps d'attente
-            
-            # Vérification que la page est bien chargée
-            if page.get_by_role("textbox", name="Valid link only"):
-                page.get_by_role("textbox", name="Valid link only").click()
-                page.get_by_role("textbox", name="Valid link only").fill(domain)
-                page.wait_for_timeout(2000)
-                page.get_by_role("button", name="Submit").click()
-                page.wait_for_timeout(2000)
-                
-                html = page.content()
-                soup = BeautifulSoup(html, 'html.parser')
-                trs = soup.select('div.container.results div.row')
-                metrics = {}
-                for row in trs:
-                    cols = row.find_all('div', class_='col-md-5')
-                    if len(cols) == 2:
-                        col1_text = cols[0].get_text(strip=True)
-                        col2_text = cols[1].get_text(strip=True)
-
-                        if ":" in col1_text:
-                            label1, value1 = map(str.strip, col1_text.split(":", 1))
-                            if 'Domain Authority' in label1:
-                                metrics["DA"] = value1
-                            elif 'Trust Flow' in label1:
-                                metrics["TF"] = value1
-                            elif 'Citation Flow' in label1:
-                                metrics["CF"] = value1
-
-                        if ":" in col2_text:
-                            label2, value2 = map(str.strip, col2_text.split(":", 1))
-                            if 'Page Authority' in label2:
-                                metrics["PA"] = value2
-                            elif 'Trust Metric' in label2:
-                                metrics["TM"] = value2
-                            elif 'Domain Validity' in label2:
-                                metrics["DV"] = value2
-                logger.info(f"Resultats lors de l'accès aux métriques SEO pour {domain}: {metrics}")
-                return metrics or {"DA": "N/A", "PA": "N/A", "TF": "N/A", "CF": "N/A", "TM": "N/A", "DV": "N/A"}
-            
-        except Exception as e:
-            logger.warning(f"Erreur lors de l'accès aux métriques SEO pour {domain}: {str(e)}")
-            return {"DA": "N/A", "PA": "N/A", "TF": "N/A", "CF": "N/A", "TM": "N/A", "DV": "N/A"}
-        
-        finally:
-            try:
-                browser.close()
-            except:
-                pass
-                
-    except Exception as e:
-        logger.error(f"Erreur critique lors de l'obtention des métriques SEO: {str(e)}")
-        return {"DA": "N/A", "PA": "N/A", "TF": "N/A", "CF": "N/A", "TM": "N/A", "DV": "N/A"}
- """
 
 
 def navigation_on_expired_domains_page(page, count: int, data: List = []):
@@ -461,13 +391,7 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
         logger.info(f'Impossible de trouver le bouton login: {e}')
         raise Exception from e
     page.wait_for_timeout(5000)
-    #page.pause()
-    #email = "melyssachristian476@gmail.com"
-    #password = "November172024"
-    #password = "ekkr vihz safe kadp"
-    #email = "kateperry017@yahoo.com"
-    #password = "jfsd bzpf mdlk iubk"
-    #code = fetch_yahoo_code(email, password)
+
     email = "crawic19@gmail.com"
     password = "owce htgj qccg todh"
     code = fetch_gmail_code(email=email, password=password)
@@ -498,7 +422,7 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
             if max_pages == 0:
                 logger.warning("Aucune page disponible ou erreur dans l'extraction du nombre de pages.")
             else:
-                while count < min(max_pages, 5):
+                while count < min(max_pages, 50):
                     logger.info('On entre bien dans la boucle')
 
                     navigation_on_expired_domains_page(page=page, count=count, data=data)
@@ -546,7 +470,7 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
             if max_pages == 0:
                 logger.warning("Aucune page disponible ou erreur dans l'extraction du nombre de pages.")
             else:
-                while counter < min(max_pages, 5):
+                while counter < min(max_pages, 50):
                     logger.info('On est bien entré dans la boucle pour deleted domains')
                     navigation_on_expired_domains_page(page=page, count=counter, data=datas)
                     columns = [
@@ -822,31 +746,25 @@ def main():
     domain_robot_url = "https://thedomainrobot.com/"
     with sync_playwright() as playwright:
         logger.info('Connexion sur web scraping en cours')
-        # username: sagarroy  aevansnappiah crawic
-        # password: Sagarroy@12 Omoghana01@ crawic19
+        username = os.environ["USERNAME_EXPIRED_DOMAINS"]
+        password = os.environ["PASSWORD_EXPIRED_DOMAINS"]
+        #print(username, password)
         get_domains_from_expired_domains(
             pw=playwright,
             url=expired_domain_url,
-            username="aevansnappiah",
-            password="Omoghana01@",
+            username=username,
+            password=password,
             bright_data=False,
             headless=False
         )
 
-                #print(f"DA: {metrics['DA']}")
         # get_domains_from_domains_robot(
         #     pw=playwright,
         #     url=domain_robot_url,
         #     bright_data=False,
         #     headless=False
         # )
-    # email = "kateperry017@yahoo.com"
-    # password = "jfsd bzpf mdlk iubk"
-    #code = fetch_yahoo_code(email, password)
-    # email = "crawic19@gmail.com"
-    # password = "owce htgj qccg todh"
-    # code = fetch_gmail_code(email=email, password=password)
-    # print(code)
+
     end_time = time.time()
     execution_time = end_time - start_time
     current_date = datetime.now()

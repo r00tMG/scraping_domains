@@ -16,7 +16,7 @@ def get_bulk_seo_metrics(pw, domains, rows, bright_data=False, headless=False):
         else:
             browser = pw.chromium.launch(headless=headless)
         context = browser.new_context()
-        context.set_default_timeout(40000)
+        context.set_default_timeout(60000)
         page = context.new_page()
 
         metrics_dict = {}
@@ -25,8 +25,8 @@ def get_bulk_seo_metrics(pw, domains, rows, bright_data=False, headless=False):
         domain_rows = {row[0]: row for row in rows}  
 
         try:
-            page.goto("https://www.checkpagerank.net/check-page-rank.php")
-
+            #page.goto("https://www.checkpagerank.net/check-page-rank.php", wait_until="domcontentloaded", timeout=60000)
+            page.goto("https://www.checkpagerank.net/index.php", wait_until="domcontentloaded", timeout=60000)
             for index, domain in enumerate(domains, 1):
                 try:
                     time.sleep(61)
@@ -43,6 +43,9 @@ def get_bulk_seo_metrics(pw, domains, rows, bright_data=False, headless=False):
                         metrics = {}
 
                         for row in trs:
+                            ip_col = row.find('div', class_='col-sm-11')
+                            if ip_col and 'Root IP:' in ip_col.text:
+                                metrics["root_ip"] = ip_col.text.split("Root IP:")[1].strip()
 
                             cols = row.find_all('div', class_='col-md-5')
                             if len(cols) == 2:
@@ -64,12 +67,14 @@ def get_bulk_seo_metrics(pw, domains, rows, bright_data=False, headless=False):
                                             metrics["spam_rating"] = value
                                         elif 'Referring Domains' in label:
                                             metrics["referring_domains"] = value
+                                        elif 'Root IP' in label:
+                                            metrics["root_ip"] = value
 
                         metrics_dict[domain] = metrics or {
                             "DA": "N/A", "PA": "N/A",
                             "TF": "N/A", "CF": "N/A",
                             "external_link": "N/A", "spam_rating": "N/A",
-                            "referring_domains": "N/A"
+                            "referring_domains": "N/A", "root_ip": "N/A"
                         }
                         current_batch.append(domain)
                         logger.info(f"Métriques récupérées pour {domain} : {metrics}")
@@ -85,7 +90,7 @@ def get_bulk_seo_metrics(pw, domains, rows, bright_data=False, headless=False):
                         "DA": "N/A", "PA": "N/A",
                         "TF": "N/A", "CF": "N/A",
                         "external_link": "N/A", "spam_rating": "N/A",
-                        "referring_domains": "N/A"
+                        "referring_domains": "N/A", "root_ip": "N/A"
                     }
             # Sauvegarder le dernier lot s'il reste des domaines
             if current_batch:
@@ -99,15 +104,18 @@ def get_bulk_seo_metrics(pw, domains, rows, bright_data=False, headless=False):
     except Exception as e:
         logger.error(f"Erreur critique lors de l'obtention des métriques SEO: {str(e)}")
         return {domain: {"DA": "N/A", "PA": "N/A", "TF": "N/A", "CF": "N/A", "external_link": "N/A",
-                         "spam_rating": "N/A", "referring_domains": "N/A"} for domain in domains}
+                         "spam_rating": "N/A", "referring_domains": "N/A", "root_ip": "N/A"} for domain in domains}
     
 
 def save_batch_metrics(metrics_dict, domains, domain_rows):
     """Sauvegarde un lot de métriques dans un fichier CSV avec toutes les informations"""
     try:
         header = ["domain", "backlinks", "creation_date", "first_seen", "DA", "PA", "TF", "CF",
-                  "external_link", "spam_rating", "referring_domains", "status", "add_date", "end_date"]
-        with open("domains_pending.csv", mode="a", newline='', encoding="utf-8") as output_file:
+                  "external_link", "spam_rating", "referring_domains", "add_date", "end_date", "status",
+                  "tld_registered", "crawl_results", "global_rank", "length", "com_tld", "net_tld",
+                  "org_tld", "biz_tld", "info_tld", "de_tld", "root_ip"
+                  ]
+        with open("domain_pending.csv", mode="a", newline='', encoding="utf-8") as output_file:
             writer = csv.writer(output_file)
             for domain in domains:
                 metrics = metrics_dict[domain]
@@ -117,20 +125,32 @@ def save_batch_metrics(metrics_dict, domains, domain_rows):
                     writer.writerow(header)
                 
                 writer.writerow([
-                    domain,
+                    domain,                             # domain
                     row[2] if len(row) > 2 else "N/A",  # backlinks
                     row[4] if len(row) > 4 else "N/A",  # creation_date
                     row[5] if len(row) > 5 else "N/A",  # first_seen
-                    metrics.get('DA', 'N/A'),
-                    metrics.get('PA', 'N/A'),
-                    metrics.get('TF', 'N/A'),
-                    metrics.get('CF', 'N/A'),
-                    metrics.get('external_link', 'N/A'),
-                    metrics.get('spam_rating', 'N/A'),
-                    metrics.get('referring_domains', 'N/A'),
-                    row[8] if len(row) > 8 else "N/A",  # status
+                    metrics.get('DA', 'N/A'),   # DA
+                    metrics.get('PA', 'N/A'),   # PA
+                    metrics.get('TF', 'N/A'),   # TF
+                    metrics.get('CF', 'N/A'),   # CF`
+                    metrics.get('external_link', 'N/A'),  # External_link
+                    metrics.get('spam_rating', 'N/A'),   # spam rating
+                    metrics.get('referring_domains', 'N/A'),  # referring_domains
                     row[16] if len(row) > 16 else "N/A",  # add_date
                     row[17] if len(row) > 17 else "N/A",  # end_date
+                    row[8] if len(row) > 8 else "N/A",  # status
+                    row[8] if len(row) > 8 else "N/A",  # TLD Registered
+                    row[6] if len(row) > 6 else "N/A",  # Crawl Results
+                    row[7] if len(row) > 7 else "N/A",  # Global Rank
+                    row[1] if len(row) > 1 else "N/A",  # Length
+                    row[9] if len(row) > 9 else "N/A",  # .com
+                    row[10] if len(row) > 10 else "N/A",  # .net
+                    row[11] if len(row) > 11 else "N/A",  # .org
+                    row[12] if len(row) > 12 else "N/A",  # .biz
+                    row[13] if len(row) > 13 else "N/A",  # .info
+                    row[14] if len(row) > 14 else "N/A",  # .de
+                    metrics.get('root_ip', 'N/A')  # addressIp
+
                 ])
         logger.info(f"Lot de {len(domains)} domaines sauvegardé avec succès")
     except Exception as e:
@@ -145,7 +165,7 @@ def main():
             rows = list(reader)
             domains = [row[0] for row in rows]
 
-            all_metrics = get_bulk_seo_metrics(pw=playwright, domains=domains, rows=rows, headless=True)
+            get_bulk_seo_metrics(pw=playwright, domains=domains, rows=rows, headless=True)
 
 
 if __name__ == '__main__':

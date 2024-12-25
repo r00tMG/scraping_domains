@@ -2,6 +2,7 @@ import csv
 
 from flasgger import Swagger
 from flask import Flask, jsonify
+#CORS(app)
 
 
 # def get_domains_from_robot_flask():
@@ -37,7 +38,7 @@ def get_pending_domains_from_expired_domain_flask():
 
 def get_pending_domains_flask():
     def read_pending_domains_from_checkpagerank_csv():
-        with open('domains_pending.csv', mode='r') as file:
+        with open('domain_pending.csv', mode='r') as file:
             csv_reader = csv.DictReader(file)
             return [row for row in csv_reader]
 

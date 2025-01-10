@@ -1,9 +1,12 @@
 import csv
+import json
 import os
 import random
 import re
 import sys
 import warnings
+
+import psutil
 import urllib3
 import webbrowser
 import time
@@ -21,7 +24,6 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from loguru import logger
 from playwright.sync_api import sync_playwright
-from flask import Flask, jsonify
 
 logger.remove()
 logger.add('python.log', rotation="500kb", level="WARNING")
@@ -31,6 +33,24 @@ load_dotenv()
 warnings.filterwarnings('ignore', category=urllib3.exceptions.NotOpenSSLWarning)
 #warnings.filterwarnings('ignore', category=urllib3.exceptions.InsecureRequestWarning)
 SBR_WS_CDP = os.environ['SBR_WS_CDP']
+
+
+def random_delay(min_delay=1, max_delay=3):
+    delay = random.uniform(min_delay, max_delay)
+    time.sleep(delay)
+
+
+# Function to fetch and rotate user agents
+def get_random_user_agent():
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 "
+        "Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 "
+        "Safari/537.36",
+        "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.0",
+        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:64.0) Gecko/20100101 Firefox/64.0"
+    ]
+    return random.choice(user_agents)
 
 
 def get_domain_robot(url: str):
@@ -195,79 +215,97 @@ def open_debug_view(page):
 
 def filterThePage(page):
     try:
+        page.wait_for_selector('xpath=//*[@id="listing"]/div[2]/div[1]/span[1]/a')
+        logger.info("Le lien 'Show Filter' est bien apercu")
         if page.get_by_role("link", name="Show Filter"):
             page.get_by_role("link", name="Show Filter").click()
     except Exception as e:
         logger.info(f'Impossibe de trouver le lien "Show Filter": {e}')
         raise Exception from e
 
-    page.wait_for_timeout(2000)
+    page.wait_for_load_state("domcontentloaded")
+    random_delay(min_delay=1, max_delay=3)
     try:
+        page.wait_for_selector('xpath=//*[@id="flast24"]')
         if page.get_by_label("only new last 24 hours"):
             page.get_by_label("only new last 24 hours").check()
     except Exception as e:
         logger.info(f"Impossible de voir le checkbox 'only new last 24 hours': {e}")
         raise Exception from e
-    page.wait_for_timeout(2000)
+
+    random_delay(min_delay=1, max_delay=3)
     try:
+        page.wait_for_selector('xpath=//*[@id="flimit"]')
         page.get_by_label("Domains per Page").select_option("200")
     except Exception as e:
         logger.info(f"Impossible de voir la selection 'Domains par Page': {e}")
         raise Exception from e
+
+    random_delay(min_delay=1, max_delay=3)
     try:
+        page.wait_for_selector('xpath=//*[@id="fconsephost"]')
         page.get_by_label("no consecutive Hyphens").check()
     except Exception as e:
         logger.info(f"Impossible de trouver le checkbox 'no consecutive Hyphens': {e}")
         raise Exception from e
-    page.wait_for_timeout(2000)
+
+    random_delay(min_delay=1, max_delay=3)
     try:
+        page.wait_for_selector('xpath=//*[@id="fadult"]')
         page.get_by_label("no Adult Names").check()
     except Exception as e:
         logger.info(f"Impossible de trouver le checkbox 'no Adult Names': {e}")
         raise Exception from e
-    page.wait_for_timeout(2000)
+
+    random_delay(min_delay=1, max_delay=3)
     try:
+        #page.wait_for_selector('xpath=')
         page.get_by_label("Backlinks").click()
         page.get_by_label("Backlinks").fill("1")
     except Exception as e:
         logger.info(f"Impossible de trouver le champs 'Backlinks > min ': {e}")
         raise Exception from e
-    page.wait_for_timeout(2000)
+
+    random_delay(min_delay=1, max_delay=3)
     try:
+        page.wait_for_selector('xpath=//*[@id="content"]/div/div[1]/form/ul/li[2]/a')
         page.get_by_text("Additional").click()
     except Exception as e:
         logger.info(f"Impossible de trouver le bouton 'Additional': {e}")
         raise Exception from e
-    page.wait_for_timeout(3000)
+
+    random_delay(min_delay=1, max_delay=3)
     try:
         page.locator("input[name=\"ftldsblock\"]").click()
         page.locator("input[name=\"ftldsblock\"]").fill(".cn .hk .ru .com.cn")
     except Exception as e:
         logger.info(f'Impossible de trouver le champ \'TLD Blocklist\': {e}')
         raise Exception from e
+
+    random_delay(min_delay=1, max_delay=3)
     try:
+        page.wait_for_selector('xpath=//*[@id="content"]/div/div[1]/form/div[2]/div/input')
         if page.get_by_role("button", name="Apply Filter"):
             page.get_by_role("button", name="Apply Filter").click()
     except Exception as e:
         logger.info(f"Impossible de trouver le button 'Apply Filter': {e}")
         raise Exception from e
-    page.wait_for_timeout(10000)
-    page.get_by_role("link", name="Show Filter").click()
+
+    random_delay(min_delay=1, max_delay=3)
 
 
 def navigation_on_expired_domains_page(page, count: int, data: List = []):
-
     try:
         page.mouse.wheel(0, 500)
         page.set_default_timeout(30000)
         html = page.content()
         logger.info('Récupération de la page html')
-        page.wait_for_timeout(2000)
+        random_delay(min_delay=1, max_delay=2)
         soup = BeautifulSoup(html, 'html.parser')
-        
+        logger.info("Analyse du code html récupéré")
         trs = soup.find('table', class_="base1").find('tbody').find_all('tr')
-        logger.info('Analyse du contenu de la page html')
-        
+        logger.info('Séléction du tableau')
+
         unique_domains = set()
         for row in trs:
             try:
@@ -275,7 +313,7 @@ def navigation_on_expired_domains_page(page, count: int, data: List = []):
                 if not cells or len(cells) < 22:
                     logger.warning(f"Ligne ignorée, colonnes manquantes : {cells}")
                     continue
-                    
+
                 domain = cells[0].a.text.strip() if cells[0].a else "-"
                 if domain in unique_domains:
                     continue
@@ -310,7 +348,7 @@ def navigation_on_expired_domains_page(page, count: int, data: List = []):
                     status_com, status_net, status_org, status_biz,
                     status_info, status_de, date_scraping, add_date, end_date, status
                 ])
-                logger.info(f"Données extraites de la table à la page {count}")
+                #logger.info(f"Données extraites de la table à la page {count}")
             except Exception as e:
                 logger.warning(f"Erreur lors du traitement du domaine: {str(e)}")
                 continue
@@ -338,20 +376,85 @@ def get_total_pages(page):
         return 0  # Valeur par défaut en cas d'erreur
 
 
+def load_cookies_from_file():
+    try:
+        with open("cookies.json", "r") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return []
+
+
+def save_cookies_to_file(cookies):
+    with open("cookies.json", "w") as file:
+        json.dump(cookies, file)
+
+
+def monitor_resources():
+    cpu_usage = psutil.cpu_percent(interval=1)
+    memory_usage = psutil.virtual_memory().percent
+    print(f"CPU Usage: {cpu_usage}% | Memory Usage: {memory_usage}%")
+
+
 def get_domains_from_expired_domains(pw, url: str, username: str, password: str, bright_data: False, headless=False):
     if bright_data:
         browser = pw.firefox.connect_over_cdp(SBR_WS_CDP)
     else:
         browser = pw.chromium.launch(headless=headless)
-    context = browser.new_context()
+
+    user_agent = get_random_user_agent()
+    logger.info("Récupération aléatoire du user-agent")
+    context = browser.new_context(user_agent=user_agent)
+    logger.info("Affectation du user-agent")
+    #geolocation={"longitude": 2.3522, "latitude": 48.8566},  # Paris
+    #timezone_id="Europe/Paris"  # Fuseau horaire de Paris
+    # Récupérer les cookies à partir d'une session précédente si disponible
+    cookies = load_cookies_from_file()  # Chargez les cookies sauvegardés d'une session précédente
+    logger.info("Chargez les cookies sauvegardés d'une session précédente")
+    if cookies:
+        context.add_cookies(cookies)
+        logger.info("Récupérer les cookies à partir d'une session précédente si disponible")
+
+    # Personnalisation du navigateur pour masquer l'automatisation
+    context.add_init_script('''() => {
+            // Supprimer l'indicateur de l'automatisation
+            delete navigator.webdriver;
+
+            // Masquer les API de détection
+            Object.defineProperty(navigator, 'permissions', {
+                get: function() {
+                    return { query: () => ({ state: 'granted' }) };
+                }
+            });
+
+            // Masquer la trace des fonctionnalités automatiques
+            window.chrome = { runtime: {}, app: {} };
+        }''')
+    logger.info("Personnalisation du navigateur pour masquer l'automatisation")
+
     context.set_default_timeout(60000)
 
-    page = context.new_page()
-    # page.set_extra_http_headers(headers)
-    if bright_data and not headless:
-        open_debug_view(page)
-    page.goto(url)
-    page.wait_for_timeout(10000)
+    # Test de l'accès au site
+    try:
+        page = context.new_page()
+        logger.info("Ouverture d'une page")
+        if bright_data and not headless:
+            open_debug_view(page)
+        page.goto(url)
+        logger.info(f"Acces réussi à {url}")
+        page.wait_for_load_state('domcontentloaded')  # Attendre le chargement complet
+        logger.info("Attendre le chargement complet")
+        # Vérification de l'usage des ressources
+        monitor_resources()
+        logger.info("Vérification de l'usage des ressources")
+
+    except Exception as e:
+        print(f"Erreur de connexion au site : {e}")
+        browser.close()
+        return []
+    #page.pause()
+    #page.wait_for_timeout(10000)
+    page.wait_for_selector("#topline .link a[href='/login/']")
+    logger.info("Lien 'Login' est aperçu avec succés")
     try:
         if page.locator("#topline").get_by_role("link", name="Login"):
             page.locator("#topline").get_by_role("link", name="Login").click()
@@ -359,7 +462,7 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
         logger.info(f'Impossible de trouver le lien login: {e}')
         raise Exception from e
 
-    page.wait_for_timeout(2000)
+    page.wait_for_selector("#inputLogin")
     try:
         if page.get_by_placeholder("Username"):
             page.get_by_placeholder("Username").click(),
@@ -367,8 +470,8 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
     except Exception as e:
         logger.info(f'Impossible de trouver le champ username: {e}')
         raise Exception from e
-    page.wait_for_timeout(2000)
 
+    page.wait_for_selector('xpath=//*[@id="inputPassword"]')
     try:
         if page.get_by_placeholder("Password"):
             page.get_by_placeholder("Password").click()
@@ -376,24 +479,30 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
     except Exception as e:
         logger.info(f'Impossible de trouver le champ password {e}')
         raise Exception from e
-    page.wait_for_timeout(2000)
+
+    page.wait_for_selector('xpath=//*[@id="rememberme"]')
     try:
         if page.get_by_label("Remember Me"):
             page.get_by_label("Remember Me").check()
     except Exception as e:
         logger.info(f'Impossible de trouver le checkbox: {e}')
         raise Exception from e
-    page.wait_for_timeout(2000)
+
+    page.wait_for_selector('xpath=//*[@id="content"]/div/div[1]/div/div[2]/form/div[4]/div/button')
+    print("Bouton selectionné")
+    #page.pause()
     try:
         if page.get_by_role("button", name="Login"):
             page.get_by_role("button", name="Login").click()
     except Exception as e:
         logger.info(f'Impossible de trouver le bouton login: {e}')
         raise Exception from e
-    page.wait_for_timeout(5000)
 
-    email = "crawic19@gmail.com"
-    password = "owce htgj qccg todh"
+    page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+    page.wait_for_timeout(5000)
+    email = os.environ['EMAIL_CODE_CONFIRMATION']
+    password = os.environ['PASSWORD_CODE_CONFIRMATION']
+
     code = fetch_gmail_code(email=email, password=password)
     page.wait_for_timeout(10000)
     try:
@@ -401,22 +510,25 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
             logger.info(f"Code de verification récupéré {code}")
             page.get_by_placeholder("Your Code").click()
             page.get_by_placeholder("Your Code").fill(code)
-            page.wait_for_timeout(2000)
+            random_delay(min_delay=1, max_delay=3)
             page.get_by_role("button", name="Verify Code").click()
-            page.wait_for_timeout(10000)
+            page.wait_for_load_state("domcontentloaded")
     except Exception as e:
         logger.info(f"Aucun code trouvé: {e}")
         raise Exception from e
-    page.wait_for_timeout(2000)
+    page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+    #page.pause()
     try:
+        page.wait_for_selector('xpath=//*[@id="navlistexpireddomains"]/li[43]/a')
+        logger.info("Bouton Pending Delete aperçu avec succés")
         if page.get_by_role("link", name="Pending Delete", exact=True):
             page.get_by_role("link", name="Pending Delete", exact=True).click()
-            page.wait_for_timeout(2000)
-            #page.pause()
+            logger.info("Clique sur le lien 'Pending Delete'")
+            page.wait_for_load_state("domcontentloaded")
+            logger.info("Chargement complète de la page")
             filterThePage(page)
             logger.info("page pending deleted domains filtrée")
             count = 1
-            #page.pause()
             max_pages = get_total_pages(page)
             data = []
             if max_pages == 0:
@@ -436,22 +548,33 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
                         csvwriter = csv.writer(csvfile)
                         if csvfile.tell() == 0:
                             csvwriter.writerow(header)
-                        #csvwriter.writerows(data)
+
                         if data:
+                            logger.info(f"Écriture de {len(data)} lignes dans le fichier.")
                             csvwriter.writerows(data)
                         else:
                             logger.warning(f"Aucune donnée à écrire pour la page {count}")
+
                     logger.info(f'les {len(data)} données de la page {count} sont extraites')
 
-                    page.wait_for_timeout(3000)
-                    # logger.info(f'screenshot_{count} est supprimé avec succés')
+                    random_delay(min_delay=2, max_delay=4)
                     try:
+                        page.wait_for_selector('xpath=//*[@id="listing"]/div[2]/div[2]/div[1]/a')
+                        logger.info("Le lien 'Next Page' est bien aperçu")
                         if page.get_by_role("link", name="Next Page »").first:
                             page.get_by_role("link", name="Next Page »").first.click()
+                            # Attendez la page suivante ou une redirection
+                            page.wait_for_load_state('domcontentloaded')
+                            logger.info("La redirection à la page suivant est effective")
+                            # Récupérez les cookies après connexion et sauvegardez-les
+                            save_cookies_to_file(
+                                context.cookies()
+                            )  # Sauvegarder les cookies pour une utilisation future
+                            random_delay(min_delay=2, max_delay=4)
+                            logger.info("Récupération et sauvegarde des cookies après connexion")
                     except Exception as e:
                         logger.info(f'Impossible de trouver le lien "Next Page": {e}')
                         raise Exception from e
-                    page.wait_for_timeout(30000)
                     # print(count)
                     count += 1
                     logger.info('On sort bien de la boucle')
@@ -460,9 +583,13 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
         raise Exception from e
     page.wait_for_timeout(2000)
     try:
+        page.wait_for_selector('xpath=//*[@id="navlistexpireddomains"]/li[1]/a')
+        logger.info("Le lien 'Deleted Domain' est bien aperçu")
         if page.get_by_role("link", name="Deleted Domains"):
             page.get_by_role("link", name="Deleted Domains").click()
-            page.wait_for_timeout(2000)
+            logger.info("Clique sur le lien 'Deleted Domains'")
+            page.wait_for_load_state("domcontentloaded")
+            logger.info("Chargement complète de la page")
             filterThePage(page)
             logger.info("page deleted domains filtrée")
             counter = 1
@@ -480,7 +607,8 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
                         "Status"
                     ]
 
-                    with open("deleted_domains_from_expired_domains.csv", mode="a", newline='', encoding="utf-8") as file:
+                    with open("deleted_domains_from_expired_domains.csv", mode="a", newline='',
+                              encoding="utf-8") as file:
                         writer = csv.writer(file)
 
                         if file.tell() == 0:
@@ -488,11 +616,19 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
 
                         writer.writerows(datas)
                     logger.info(f'{len(datas)}Données extraites à le page {counter}')
-                    page.wait_for_timeout(3000)
+                    random_delay(min_delay=2, max_delay=4)
                     try:
+                        page.wait_for_selector('xpath=//*[@id="listing"]/div[2]/div[2]/div[1]/a')
+                        logger.info("Le lien 'Next Page' est bien aperçu")
                         if page.get_by_role("link", name="Next Page »").first:
                             page.get_by_role("link", name="Next Page »").first.click()
-                            page.wait_for_timeout(30000)
+                            # Attendez la page suivante ou une redirection
+                            page.wait_for_load_state('domcontentloaded')
+                            logger.info("La redirection à la page suivant est effective")
+                            # Récupérez les cookies après connexion et sauvegardez-les
+                            save_cookies_to_file(
+                                context.cookies())  # Sauvegarder les cookies pour une utilisation future
+                            random_delay(min_delay=2, max_delay=4)
                     except Exception as e:
                         logger.info(f'Impossible de trouver le bouton suivant: {e}')
                         raise Exception from e
@@ -509,7 +645,7 @@ def get_domains_from_expired_domains(pw, url: str, username: str, password: str,
 def sent_message(message):
     requests.post("https://api.pushover.net/1/messages.json", {
         "token": os.environ['PUSHOVER_TOKEN'],
-        "user":  os.environ['PUSHOVER_USER'],
+        "user": os.environ['PUSHOVER_USER'],
         "message": message
     })
 
@@ -527,20 +663,6 @@ def save_domains(page: str, count: int):
             path=f"pages/screenshot_{count}.png")
     else:
         logger.info('Impossible de trouver cette section')
-
-    # section_expiring = page.locator("section").filter(has_text="DomainPaid until Expiring the")
-    # if section_expiring:
-    #     table_height = \
-    #         section_expiring.bounding_box()[
-    #             'height']
-    #     page.set_viewport_size({"width": 1200, "height": int(table_height) + 100})
-    #
-    #     section_expiring.scroll_into_view_if_needed()
-    #
-    #     section_expiring.screenshot(
-    #         path=f"pages/screenshot_{count}.png")
-    # else:
-    #     logger.info('Impossible de trouver cette section')
 
     img_path = f"pages/screenshot_{count}.png"
     img = Image.open(img_path)
@@ -610,26 +732,6 @@ def navigate_in_the_page(page: str, count: int):
         else:
             logger.info('Impossible de trouver le button dropdown')
 
-    # if page.locator(".flag-text > .svg-inline--fa > path"):
-    #     page.locator(".flag-text > .svg-inline--fa > path").click()
-    #     page.wait_for_timeout(3000)
-    #     if page.locator("div").filter(has_text=re.compile(r"^\.org$")).first:
-    #         page.locator("div").filter(has_text=re.compile(r"^\.org$")).first.click()
-    #         page.wait_for_timeout(3000)
-    #         if page.get_by_text("Load more"):
-    #             page.get_by_text("Load more").click()
-    #             page.wait_for_timeout(2000)
-    #         else:
-    #             logger.info('Impossible de trouver le button "Load more" aprés le click du button ".org"')
-    #
-    #         save_domains(page=page, count=count)
-    #
-    #         page.wait_for_timeout(10000)
-    #     else:
-    #         logger.info('Impossible de trouver le button ".org" ')
-    # else:
-    #     logger.info('Impossible de trouver le button dropdown')
-
 
 def get_domains_from_domains_robot(pw, url: str, bright_data: True, headless: False):
     if bright_data:
@@ -668,72 +770,6 @@ def get_domains_from_domains_robot(pw, url: str, bright_data: True, headless: Fa
         navigate_in_the_page(page=page, count=count)
         logger.info("Finish")
 
-        # if page.get_by_role("link", name="Domains Expiring Soon"):
-        #     page.get_by_role("link", name="Domains Expiring Soon").click()
-        #     if page.get_by_text("Load more"):
-        #         page.get_by_text("Load more").click()
-        #         page.wait_for_timeout(2000)
-        #         page.pause()
-        #         #save_domains(page=page, count=count)
-        #         section_expiring = page.locator("section").filter(has_text="DomainPaid until Expiring the")
-        #         if section_expiring:
-        #             table_height = \
-        #                 section_expiring.bounding_box()[
-        #                     'height']
-        #             page.set_viewport_size({"width": 1200, "height": int(table_height) + 100})
-        #
-        #             section_expiring.scroll_into_view_if_needed()
-        #
-        #             section_expiring.screenshot(
-        #                 path=f"pages/screenshot_{count}.png")
-        #         else:
-        #             logger.info('Impossible de trouver cette section')
-        #
-        #         img_path = f"pages/screenshot_{count}.png"
-        #         img = Image.open(img_path)
-        #         raw_data = pytesseract.image_to_string(img)
-        #
-        #         domain_pattern = r'\b[a-zA-Z0-9-]+\.[a-z]{2,6}\b'
-        #         data_extracts = re.findall(domain_pattern, raw_data)
-        #
-        #         unique_domains = set()
-        #         for line in data_extracts:
-        #             if re.match(r'^[a-zA-Z0-9-]+\.[a-z]{2,}$', line):
-        #                 unique_domains.add(line.strip())
-        #
-        #         existing_domains = set()
-        #         if os.path.exists("domains_from_robot.csv"):
-        #             with open("domains_from_robot.csv", mode="r", newline='', encoding="utf-8") as file:
-        #                 reader = csv.reader(file)
-        #                 next(reader)
-        #                 for row in reader:
-        #                     existing_domains.add(row[0])
-        #
-        #         new_domains = unique_domains - existing_domains
-        #         if new_domains:
-        #             current_date = datetime.now().strftime("%Y-%m-%d")
-        #             data = [
-        #                 [domain, current_date]
-        #                 for domain in new_domains
-        #             ]
-        #
-        #             with open("domains_from_robot.csv", mode="a", newline='', encoding="utf-8") as file:
-        #                 writer = csv.writer(file)
-        #                 if count == 0 and file.tell() == 0:
-        #                     writer.writerow(["Domain", "Add Date"])  # Ajouter les en-têtes si le fichier est vide
-        #                 writer.writerows(data)
-        #
-        #             logger.info(f"Ajout de {len(new_domains)}:{new_domains} nouveaux domaines.")
-        #         else:
-        #             logger.info("Aucun nouveau domaine trouvé.")
-        #
-        #         os.remove(img_path)
-        #         logger.info(f'screenshot_{count} est supprimé avec succès')
-        #         navigate_in_the_page(page=page, count=count)
-        #
-        # else:
-        #     logger.info('Impossible de trouver le button "Domains Expiring Soon" ')
-
         count += 1
         logger.info("Sortie de la boucle")
 
@@ -755,7 +791,7 @@ def main():
             username=username,
             password=password,
             bright_data=False,
-            headless=False
+            headless=True
         )
 
         # get_domains_from_domains_robot(
@@ -764,7 +800,11 @@ def main():
         #     bright_data=False,
         #     headless=False
         # )
+    email = os.environ['EMAIL_CODE_CONFIRMATION']
+    password = os.environ['PASSWORD_CODE_CONFIRMATION']
 
+    code = fetch_gmail_code(email=email, password=password)
+    print(code)
     end_time = time.time()
     execution_time = end_time - start_time
     current_date = datetime.now()

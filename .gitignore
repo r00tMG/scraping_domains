@@ -2,7 +2,7 @@
 /env
 .env
 trash.py
-*.csv
+#*.csv
 python.log
 
 
